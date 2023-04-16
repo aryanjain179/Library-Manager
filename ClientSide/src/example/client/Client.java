@@ -1,26 +1,48 @@
 package example.client;
 
+import java.io.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Scanner;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.net.Socket;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.stage.Stage;
 
-class Client {
+public class Client extends Application {
 
   private static String host = "127.0.0.1";
-  private BufferedReader fromServer;
-  private PrintWriter toServer;
+  private static BufferedReader fromServer;
+  private static PrintWriter toServer;
   private Scanner consoleInput = new Scanner(System.in);
 
+  @FXML
+  private static Stage applicationStage;
+  @FXML
+  private static TextArea libraryDisplay;
+
+  @FXML
+  private TextField username;
+
+  @FXML
+  private TextField password;
+
+  private static String usernameString;
+
+  private static String passwordString;
+
+  private static InstructionType instructionType;
+
   public static void main(String[] args) {
-    try {
-      new Client().setUpNetworking();
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    launch(args);
   }
 
   private void setUpNetworking() throws Exception {
@@ -39,38 +61,178 @@ class Client {
             System.out.println("From server: " + input);
             processRequest(input);
           }
-        } catch (Exception e) {
-          e.printStackTrace();
+        }
+        catch (Exception e) {
         }
       }
     });
 
-    Thread writerThread = new Thread(new Runnable() {
+    /*Thread writerThread = new Thread(new Runnable() {
       @Override
       public void run() {
         while (true) {
-          String input = consoleInput.nextLine();
-          String[] variables = input.split(",");
-          Message request = new Message(variables[0], variables[1], Integer.valueOf(variables[2]));
-          GsonBuilder builder = new GsonBuilder();
-          Gson gson = builder.create();
-          sendToServer(gson.toJson(request));
+          try {
+            Thread.sleep(10);
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+          if (instructionType == InstructionType.REGISTER) {
+            ArrayList<String> instructionParameters = new ArrayList<>(Arrays.asList(usernameString,passwordString));
+            Instruction instruction = new Instruction(instructionType, instructionParameters);
+            sendToServer(instruction);
+            instructionType = null;
+          }
         }
       }
-    });
+    });*/
 
     readerThread.start();
-    writerThread.start();
+    //writerThread.start();
   }
 
   protected void processRequest(String input) {
-    return;
+    Gson gson = new Gson();
+    Outcome outcome = gson.fromJson(input,Outcome.class);
+    if (outcome == Outcome.LOGIN_PASSED){
+      try {
+        input = fromServer.readLine();
+      }
+      catch (IOException e) {
+      }
+      Library lib = gson.fromJson(input,Library.class);
+      libraryLauncher(lib);
+    }
   }
 
-  protected void sendToServer(String string) {
+  @FXML
+  public void libraryLauncher(Library lib){
+    Parent root = null;
+    try {
+      root = FXMLLoader.load(getClass().getResource("Library.fxml"));
+    }
+    catch (IOException e) {
+    }
+
+    Scene scene = new Scene(root);
+    libraryDisplay = (TextArea) scene.lookup("#libraryDisplay");
+
+    // Update the UI on the JavaFX Application Thread
+    Platform.runLater(() -> {
+      libraryDisplay.setText(lib.books.toString());
+      applicationStage.setScene(scene);
+      applicationStage.show();
+    });
+  }
+
+  protected void sendToServer(Instruction instruction) {
+    Gson gson = new Gson();
+    String string = gson.toJson(instruction);
     System.out.println("Sending to server: " + string);
     toServer.println(string);
     toServer.flush();
   }
 
+  @Override
+  public void start(Stage applicationStage) {
+    this.applicationStage = applicationStage;
+    Parent root = null;
+    try {
+      root = FXMLLoader.load(getClass().getResource("Login.fxml"));
+    }
+    catch (IOException e) {
+    }
+    Scene scene = new Scene(root);
+    applicationStage.setScene(scene);
+    applicationStage.show();
+    try {
+      setUpNetworking();
+    }
+    catch (Exception e) {
+    }
+  }
+
+  @FXML
+  public void registerHandler(){
+    Parent root = null;
+    try {
+      root = FXMLLoader.load(getClass().getResource("Library.fxml"));
+    }
+    catch (IOException e) {
+    }
+
+    usernameString = username.getText();
+    passwordString = password.getText();
+    instructionType = InstructionType.REGISTER;
+
+    /*Scene scene = new Scene(root);
+    applicationStage.setScene(scene);
+    applicationStage.show();
+
+    libraryDisplay = (TextArea) scene.lookup("#libraryDisplay");*/
+
+    ArrayList<String> instructionParameters = new ArrayList<>(Arrays.asList(usernameString,passwordString));
+    Instruction instruction = new Instruction(instructionType, instructionParameters);
+    sendToServer(instruction);
+    instructionType = null;
+  }
+
+  @FXML
+  public void loginHandler(){
+    Parent root = null;
+    try {
+      root = FXMLLoader.load(getClass().getResource("Library.fxml"));
+    }
+    catch (IOException e) {
+    }
+
+    usernameString = username.getText();
+    passwordString = password.getText();
+    instructionType = InstructionType.LOGIN;
+
+    /*Scene scene = new Scene(root);
+    applicationStage.setScene(scene);
+    applicationStage.show();
+
+    libraryDisplay = (TextArea) scene.lookup("#libraryDisplay");*/
+
+    ArrayList<String> instructionParameters = new ArrayList<>(Arrays.asList(usernameString,passwordString));
+    Instruction instruction = new Instruction(instructionType, instructionParameters);
+    sendToServer(instruction);
+    instructionType = null;
+  }
+
+
+}
+class Library implements Serializable {
+  ArrayList<String> books;
+  int numBooks;
+  public Library(ArrayList<String> books){
+    this.books = books;
+    numBooks = books.size();
+  }
+}
+
+enum InstructionType {
+  LOGIN,
+  REGISTER,
+  CHECKOUT,
+  LOGOUT
+}
+
+class Instruction implements Serializable {
+  InstructionType instructionType;
+
+  ArrayList<String> instructionParameters;
+
+  public Instruction(InstructionType instructionType, ArrayList<String> instructionParameters){
+    this.instructionType = instructionType;
+    this.instructionParameters = instructionParameters;
+  }
+
+}
+enum Outcome {
+  REGISTRATION_PASSED,
+  REGISTRATION_FAILED,
+  LOGIN_PASSED,
+  LOGIN_FAILED,
 }
