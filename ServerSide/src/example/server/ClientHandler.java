@@ -1,8 +1,12 @@
 package example.server;
 
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import org.bson.Document;
 
+import javax.print.Doc;
 import java.io.*;
+import java.lang.reflect.Type;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,28 +43,15 @@ class ClientHandler implements Runnable, Observer {
     try {
       while ((input = fromClient.readLine()) != null) {
         System.out.println("From client: " + input);
-        Outcome outcome = server.processRequest(input);
         Gson gson = new Gson();
-        Library lib = null;
+        ArrayList<Outcome> outcome = server.processRequest(input);
         String string = null;
-        outcome = Outcome.LOGIN_PASSED;
-        if (outcome == Outcome.REGISTRATION_FAILED){
-          string = gson.toJson(Outcome.REGISTRATION_FAILED);
+        if (outcome.get(0) == Outcome.LOGIN_PASSED || outcome.get(0) == Outcome.REGISTRATION_PASSED){
+
+          initialData id = new initialData(server.getLibrary(),server.getBooksChecked(input), null);
+          string = gson.toJson(id);
+          this.sendToClient("A"+string);
         }
-        else if (outcome == Outcome.LOGIN_FAILED){
-          string = gson.toJson(Outcome.LOGIN_FAILED);
-        }
-        else if (outcome == Outcome.REGISTRATION_PASSED){
-          string = gson.toJson(Outcome.REGISTRATION_PASSED);
-        }
-        else if (outcome == Outcome.LOGIN_PASSED){
-          string = gson.toJson(Outcome.LOGIN_PASSED);
-          this.sendToClient(string);
-          ArrayList<String> books = new ArrayList<>(Arrays.asList("Harry Potter", "Diary of a Wimpy Kid", "Big Nate", "Catcher in the Rye"));
-          lib = new Library(books);
-          string = gson.toJson(lib);
-        }
-        this.sendToClient(string);
       }
     } catch (IOException e) {
       e.printStackTrace();
@@ -69,16 +60,16 @@ class ClientHandler implements Runnable, Observer {
 
   @Override
   public void update(Observable o, Object arg) {
-    this.sendToClient((String) arg);
-  }
-}
+    Gson gson = new Gson();
 
-class Library implements Serializable{
-  ArrayList<String> books;
-  int numBooks;
-  public Library(ArrayList<String> books){
-    this.books = books;
-    numBooks = books.size();
+    Document update = (Document) arg;
+
+    String string = gson.toJson(update);
+
+    System.out.println("Sending to client: " + string);
+    toClient.println("B"+string);
+
+    toClient.flush();
   }
 }
 
@@ -86,7 +77,8 @@ enum InstructionType {
   LOGIN,
   REGISTER,
   CHECKOUT,
-  LOGOUT
+  LOGOUT,
+  RETURN
 }
 
 class Instruction implements Serializable {
@@ -106,4 +98,24 @@ enum Outcome {
   REGISTRATION_FAILED,
   LOGIN_PASSED,
   LOGIN_FAILED,
+  CHECKOUT_PASSED,
+  CHECKOUT_FAILED,
+  UPDATE,
+  RETURN_PASSED,
+  REFRESH_PASSED
+}
+
+class initialData implements Serializable{
+
+  ArrayList<Document> initLib;
+  ArrayList<String> initCurrentBooks;
+
+  ArrayList<String> initUserHolds;
+
+  public initialData(ArrayList<Document> initLib, ArrayList<String> initCurrentBooks, ArrayList initUserHolds){
+    this.initLib = initLib;
+    this.initCurrentBooks = initCurrentBooks;
+    this.initUserHolds = initUserHolds;
+  }
+
 }
